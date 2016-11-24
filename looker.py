@@ -13,7 +13,7 @@ class LookerAPI(object):
         try:
             auth_data = {'client_id':self.client_id, 'client_secret':self.client_secret}
             r = requests.post( self.login_endpoint,data=auth_data) # error handle here
-            json_auth = json.loads(r.text)['access_token']
+            json_auth = r.json()['access_token']
             return json_auth
         except requests.exceptions.RequestException as e:
             logger.error(e)
@@ -70,21 +70,65 @@ class LookerAPI(object):
            create access filter fields for a user
             example body: {"field": "blank.test3","value": "1","model": "brettg_testing"}
         """
-        post_user_aff_url = self.api_endpoint + "/users/{0}/access_filters".format(user_id)
-        r = requests.post(post_user_aff_url, headers={'Authorization': "token " + json_auth['access_token']},data=json.dumps(json_body))
-        # print r.status_code
-
+        try:
+            post_user_aff_url = self.api_endpoint + "/users/{0}/access_filters".format(user_id)
+            r = requests.post(post_user_aff_url, headers={'Authorization': "token " + json_auth['access_token']},data=json.dumps(json_body))
+        except requests.exceptions.RequestException as e:
+            logger.error(e)
     def update_access_filter_fields(self,json_body,user_id,access_filter_id):
-        update_user_url = self.api_endpoint  + "/users/{0}/access_filters/{1}".format(user_id,access_filter_id)
-        r = requests.patch(update_user_url, headers={'Authorization': "token " + json_auth['access_token']},data=json.dumps({"access_filters":}))
-
+        try:
+            update_user_url = self.api_endpoint  + "/users/{0}/access_filters/{1}".format(user_id,access_filter_id)
+            r = requests.patch(update_user_url, headers={'Authorization': "token " + json_auth['access_token']},data=json.dumps({"access_filters":json_body}))
+        except requests.exceptions.RequestException as e:
+            logger.error(e)
 
     def get_models(self,model_name):
-        models_url = 'https://learn.looker.com:19999/api/3.0/lookml_models/{0}'.format(model_name)
-        all_models = session.get(models_url, headers={'Authorization': "token " + json_auth['access_token']})
-        # print "status: " + str(all_models.status_code)
-        # print "models: " + all_models.text
+        try:
+            models_url = self.api_endpoint + "/lookml_models/{0}".format(model_name)
+            all_models = requests.get(models_url, headers={'Authorization': "token " + json_auth['access_token']})
+            return all_models
+        except requests.exceptions.RequestException as e:
+            logger.error(e)
 
     def get_models_explores(self,model_name,explore_name):
-        models_url = 'https://learn.looker.com:19999/api/3.0/lookml_models/{0}/explores/{1}'.format(model_name,explore_name)
-        all_models = session.get(models_url, headers={'Authorization': "token " + json_auth['access_token']})
+        try:
+            explore_url = self.api_endpoint + "/lookml_models/{0}/explores/{1}".format(model_name,explore_name)
+            explore_info = requests.get(models_url, headers={'Authorization': "token " + json_auth['access_token']})
+            return explore_info
+        except requests.exceptions.RequestException as e:
+            logger.error(e)
+
+def ConfigSectionMap(section):
+    import ConfigParser
+    Config = ConfigParser.ConfigParser()
+    dict1 = {}
+    options = Config.options(section)
+    for option in options:
+        try:
+            dict1[option] = Config.get(section, option)
+            if dict1[option] == -1:
+                logger.debug("skip: %s" % option)
+        except:
+            logger.warn("exception on %s!" % option)
+            dict1[option] = None
+    return dict1
+
+def logger_initialize(log_suffix):
+    """
+    include a suffix to append to log names
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    handler = logging.FileHandler(str(time.strftime("%d_%m_%Y")) + log_suffix + ".log")
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+
+def test(config_section_name,look_id):
+    logger_initialize("looker_api")
+    looker_api = LookerAPI(ConfigSectionMap(config_section_name))
+    json_auth = looker_api.login()
+    look_response = looker_api.run_look(look_id,json_auth)
